@@ -3,9 +3,90 @@
 #include <string.h>
 #include <unistd.h>
 #include <errno.h>
-
 #include "mujs.h"
+//
+// BEGIN FUZZING CODE
+//
+#include <fcntl.h>
+#include <sys/wait.h>
+#include <sys/mman.h>
+#define REPRL_CRFD 100
+#define REPRL_CWFD 101
+#define REPRL_DRFD 102
+#define REPRL_DWFD 103
+#define REPRL_MAX_DATA_SIZE (16*1024*1024)
+#define SHM_SIZE 0x100000
+#define MAX_EDGES ((SHM_SIZE - 4) * 8)
+#define CHECK(cond) if (!(cond)) { fprintf(stderr, "\"" #cond "\" failed\n"); exit(EXIT_FAILURE); }
+// Shared memory buffer with the parent.
+char* reprl_input_data;
+struct shmem_data {
+    uint32_t num_edges;
+    unsigned char edges[];
+};
 
+struct shmem_data* __shmem;
+uint32_t *__edges_start, *__edges_stop;
+
+void __sanitizer_cov_reset_edgeguards() {
+    uint64_t N = 0;
+    for (uint32_t *x = __edges_start; x < __edges_stop && N < MAX_EDGES; x++)
+        *x = ++N;
+}
+
+//extern "C" 
+void __sanitizer_cov_trace_pc_guard_init(uint32_t *start, uint32_t *stop) {
+    // Avoid duplicate initialization
+    if (start == stop || *start)
+        return;
+
+    if (__edges_start != NULL || __edges_stop != NULL) {
+        fprintf(stderr, "Coverage instrumentation is only supported for a single module\n");
+        _exit(-1);
+    }
+
+    __edges_start = start;
+    __edges_stop = stop;
+
+    // Map the shared memory region
+    const char* shm_key = getenv("SHM_ID");
+    if (!shm_key) {
+        puts("[COV] no shared memory bitmap available, skipping");
+        __shmem = (struct shmem_data*) malloc(SHM_SIZE);
+    } else {
+        int fd = shm_open(shm_key, O_RDWR, S_IREAD | S_IWRITE);
+	        if (fd <= -1) {
+            fprintf(stderr, "Failed to open shared memory region: %s\n", strerror(errno));
+            _exit(-1);
+        }
+
+        __shmem = (struct shmem_data*) mmap(0, SHM_SIZE, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
+        if (__shmem == MAP_FAILED) {
+            fprintf(stderr, "Failed to mmap shared memory region\n");
+            _exit(-1);
+        }
+    }
+
+    __sanitizer_cov_reset_edgeguards();
+
+    __shmem->num_edges = stop - start;
+    printf("[COV] edge counters initialized. Shared memory: %s with %u edges\n", shm_key, __shmem->num_edges);
+}
+
+//extern "C" 
+void __sanitizer_cov_trace_pc_guard(uint32_t *guard) {
+    // There's a small race condition here: if this function executes in two threads for the same
+    // edge at the same time, the first thread might disable the edge (by setting the guard to zero)
+    // before the second thread fetches the guard value (and thus the index). However, our
+    // instrumentation ignores the first edge (see libcoverage.c) and so the race is unproblematic.
+    uint32_t index = *guard;
+    __shmem->edges[index / 8] |= 1 << (index % 8);
+    *guard = 0;
+}
+
+//
+// END FUZZING CODE
+//
 static char *xoptarg; /* Global argument pointer. */
 static int xoptind = 0; /* Global argv index. */
 static int xgetopt(int argc, char *argv[], char *optstring)
@@ -278,6 +359,7 @@ static void usage(void)
 	fprintf(stderr, "Usage: mujs [options] [script [scriptArgs*]]\n");
 	fprintf(stderr, "\t-i: Enter interactive prompt after running code.\n");
 	fprintf(stderr, "\t-s: Check strictness.\n");
+	fprintf(stderr, "\t-f: Fuzzilli mode.\n");
 	exit(1);
 }
 
@@ -289,6 +371,7 @@ main(int argc, char **argv)
 	int status = 0;
 	int strict = 0;
 	int interactive = 0;
+	int reprl_fuzzilli_mode = 0;
 	int i, c;
 
 	while ((c = xgetopt(argc, argv, "is")) != -1) {
@@ -296,81 +379,150 @@ main(int argc, char **argv)
 		default: usage(); break;
 		case 'i': interactive = 1; break;
 		case 's': strict = 1; break;
+		case 'f': reprl_fuzzilli_mode = 1; break;
 		}
 	}
+	// Let parent know we are ready
+  if (reprl_fuzzilli_mode)  {
+    char helo[] = "HELO";
+    if (write(REPRL_CWFD, helo, 4) != 4 ||
+      read(REPRL_CRFD, helo, 4) != 4) {
+      reprl_fuzzilli_mode = 0;
+    }
+	if (memcmp(helo, "HELO", 4) != 0) {
+	   fprintf(stderr, "Invalid response from parent\n");
+	      _exit(-1);
+    }
+  }
+  do {
+		// later fuzz strict mode as well
+		J = js_newstate(NULL, NULL, strict ? JS_STRICT : 0);
 
-	J = js_newstate(NULL, NULL, strict ? JS_STRICT : 0);
+		js_newcfunction(J, jsB_gc, "gc", 0);
+		js_setglobal(J, "gc");
 
-	js_newcfunction(J, jsB_gc, "gc", 0);
-	js_setglobal(J, "gc");
+		js_newcfunction(J, jsB_load, "load", 1);
+		js_setglobal(J, "load");
 
-	js_newcfunction(J, jsB_load, "load", 1);
-	js_setglobal(J, "load");
+		js_newcfunction(J, jsB_compile, "compile", 2);
+		js_setglobal(J, "compile");
 
-	js_newcfunction(J, jsB_compile, "compile", 2);
-	js_setglobal(J, "compile");
+		js_newcfunction(J, jsB_print, "print", 0);
+		js_setglobal(J, "print");
 
-	js_newcfunction(J, jsB_print, "print", 0);
-	js_setglobal(J, "print");
+		js_newcfunction(J, jsB_write, "write", 0);
+		js_setglobal(J, "write");
 
-	js_newcfunction(J, jsB_write, "write", 0);
-	js_setglobal(J, "write");
+		js_newcfunction(J, jsB_read, "read", 1);
+		js_setglobal(J, "read");
 
-	js_newcfunction(J, jsB_read, "read", 1);
-	js_setglobal(J, "read");
+		js_newcfunction(J, jsB_readline, "readline", 0);
+		js_setglobal(J, "readline");
 
-	js_newcfunction(J, jsB_readline, "readline", 0);
-	js_setglobal(J, "readline");
+		js_newcfunction(J, jsB_repr, "repr", 0);
+		js_setglobal(J, "repr");
 
-	js_newcfunction(J, jsB_repr, "repr", 0);
-	js_setglobal(J, "repr");
+		js_newcfunction(J, jsB_quit, "quit", 1);
+		js_setglobal(J, "quit");
 
-	js_newcfunction(J, jsB_quit, "quit", 1);
-	js_setglobal(J, "quit");
+		js_dostring(J, require_js);
+		js_dostring(J, stacktrace_js);
 
-	js_dostring(J, require_js);
-	js_dostring(J, stacktrace_js);
-
-	if (xoptind == argc) {
-		interactive = 1;
-	} else {
-		c = xoptind++;
-
-		js_newarray(J);
-		i = 0;
-		while (xoptind < argc) {
-			js_pushstring(J, argv[xoptind++]);
-			js_setindex(J, -2, i++);
-		}
-		js_setglobal(J, "scriptArgs");
-
-		if (js_dofile(J, argv[c]))
-			status = 1;
-	}
-
-	if (interactive) {
-		if (isatty(0)) {
-			using_history();
-			rl_bind_key('\t', rl_insert);
-			input = readline(PS1);
-			while (input) {
-				eval_print(J, input);
-				if (*input)
-					add_history(input);
-				free(input);
-				input = readline(PS1);
-			}
-			putchar('\n');
+		if (xoptind == argc) {
+			interactive = 1;
 		} else {
-			input = read_stdin();
-			if (!input || !js_dostring(J, input))
+			c = xoptind++;
+
+			js_newarray(J);
+			i = 0;
+			while (xoptind < argc) {
+				js_pushstring(J, argv[xoptind++]);
+				js_setindex(J, -2, i++);
+			}
+			js_setglobal(J, "scriptArgs");
+			// write buffer to file?
+			if (js_dofile(J, argv[c]))
 				status = 1;
-			free(input);
 		}
+
+		if (interactive) {
+			if (isatty(0)) {
+				using_history();
+				rl_bind_key('\t', rl_insert);
+				input = readline(PS1);
+				while (input) {
+					eval_print(J, input);
+					if (*input)
+						add_history(input);
+					free(input);
+					input = readline(PS1);
+				}
+				putchar('\n');
+			} else {
+				input = read_stdin();
+				if (!input || !js_dostring(J, input))
+					status = 1;
+				free(input);
+			}
+		}
+		js_gc(J, 0);
+		js_freestate(J);
+	      if (reprl_fuzzilli_mode) {
+	        unsigned action = 0;
+	        ssize_t nread = read(REPRL_CRFD, &action, 4);
+	        fflush(0);
+	        if (nread != 4 || action != 0x63657865) { // 'exec'
+	          fprintf(stderr, "Unknown action: %x\n", action);
+	          _exit(-1);
+	     }
+      }
+  	 }	 while (!reprl_fuzzilli_mode);
+	   int is_done = 0;
+	   int len;
+	   if (reprl_fuzzilli_mode)
+      {
+		// read 8 bytes on REPRL_CRFD, store as unsigned 64 bit integer size
+        size_t script_size = 0;
+        read(REPRL_CRFD, &script_size, 8);
+		// allocate size+1 bytes
+        char* buffer = (char*)malloc(script_size+1);
+		ssize_t remaining = (ssize_t) script_size;
+        while (remaining > 0)
+        {
+		// read size bytes from REPRL_DRFD into allocated buffer, either via memory mapped IO or the read syscall (make sure to account for short reads in the latter case)
+          ssize_t rv = read(REPRL_DRFD, buffer, (size_t) remaining);
+          if (rv <= 0) {
+            fprintf(stderr, "Failed to load script\n");
+            _exit(-1);
+          }
+          remaining -= rv;
+          buffer += rv;
+        }
+        buffer[script_size] = 0;
+        // we have to do this to reset the state
+        is_done = 1;
+      }
+	if(!reprl_fuzzilli_mode){
+		return status;
 	}
-
-	js_gc(J, 0);
-	js_freestate(J);
-
-	return status;
+	while (!reprl_fuzzilli_mode);
 }
+// (Must include the 4 defined File Descriptor numbers REPRL_CRFD, REPRL_CWFD, REPRL_DRFD, REPRL_DWFD)
+
+// if REPRL_MODE on commandline:
+//     write "HELO" on REPRL_CWFD
+//     read 4 bytes on REPRL_CRFD
+//     break if 4 read bytes do not equal "HELO"
+//     optionally, mmap the REPRL_DRFD with size REPRL_MAX_DATA_SIZE
+//     while true:
+//         read 4 bytes on REPRL_CRFD
+//         break if 4 read bytes do not equal "cexe"
+//         read 8 bytes on REPRL_CRFD, store as unsigned 64 bit integer size
+//         allocate size+1 bytes
+//         read size bytes from REPRL_DRFD into allocated buffer, either via memory mapped IO or the read syscall (make sure to account for short reads in the latter case)
+//         Execute buffer as javascript code
+//         Store return value from JS execution
+//         Flush stdout and stderr. As REPRL sets them to regular files, libc uses full bufferring for them, which means they need to be flushed after every execution
+//         Mask return value with 0xff and shift it left by 8, then write that value over REPRL_CWFD
+//         Reset the Javascript engine
+//         Call __sanitizer_cov_reset_edgeguards to reset coverage
