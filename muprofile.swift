@@ -30,18 +30,14 @@ let muProfile = Profile(
 
     ecmaVersion: ECMAScriptVersion.es5,
 
-    crashTests: ["fuzzilli('FUZZILLI_CRASH', 0)", "fuzzilli('FUZZILLI_CRASH', 1)"],
+    crashTests: ["crash();"],
 
-    additionalCodeGenerators: WeightedList<CodeGenerator>([]),
+    additionalCodeGenerators: WeightedList<CodeGenerator>([
+        (ForceV8TurbofanGenerator, 10),
+    ]),
 
-    additionalProgramTemplates: WeightedList<ProgramTemplate>([]),
-
-    disabledCodeGenerators: [],
-
-    additionalBuiltins: [
-        "gc"                : .function([] => .undefined),
-        "print"             : .function([] => .undefined),
-        "resourceName"      : .function([] => .undefined),
-    ]
+    builtins: defaultBuiltins + ["gc", "BigInt", "BigUint64Array", "BigInt64Array", "SharedArrayBuffer", "Atomics"],
+    propertyNames: defaultPropertyNames,
+    methodNames: defaultMethodNames
 )
 
