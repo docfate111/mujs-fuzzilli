@@ -5,13 +5,13 @@
 #include <errno.h>
 #include <stdint.h>
 #include "mujs.h"
+#include <sys/mman.h>
+#include <sys/stat.h>        /* For mode constants */
+#include <fcntl.h>           /* For O_* constants */
 //
 // BEGIN FUZZING CODE
 //
-#include <fcntl.h>
-#include <sys/stat.h>
-#include <sys/wait.h>
-#include <sys/mman.h>
+
 #define REPRL_CRFD 100
 #define REPRL_CWFD 101
 #define REPRL_DRFD 102
@@ -20,13 +20,7 @@
 #define SHM_SIZE 0x100000
 #define MAX_EDGES ((SHM_SIZE - 4) * 8)
 
-#ifndef DCHECK
-#define DCHECK(condition) { assert(condition); abort(); }
-#endif
-
-#ifndef CHECK
-#define CHECK DCHECK
-#endif
+#define CHECK(cond) if (!(cond)) { fprintf(stderr, "\"" #cond "\" failed\n"); _exit(-1); }
 
 struct shmem_data {
     uint32_t num_edges;
@@ -37,12 +31,12 @@ struct shmem_data* __shmem;
 uint32_t *__edges_start, *__edges_stop;
 
 void __sanitizer_cov_reset_edgeguards() {
-    uint32_t N = 0;
+    uint64_t N = 0;
     for (uint32_t *x = __edges_start; x < __edges_stop && N < MAX_EDGES; x++)
         *x = ++N;
 }
 
-void __sanitizer_cov_trace_pc_guard_init(uint32_t *start, uint32_t *stop) {
+ void __sanitizer_cov_trace_pc_guard_init(uint32_t *start, uint32_t *stop) {
     // Avoid duplicate initialization
     if (start == stop || *start)
         return;
@@ -61,7 +55,7 @@ void __sanitizer_cov_trace_pc_guard_init(uint32_t *start, uint32_t *stop) {
         puts("[COV] no shared memory bitmap available, skipping");
         __shmem = (struct shmem_data*) malloc(SHM_SIZE);
     } else {
-        int fd = shm_open(shm_key, O_RDWR, S_IRUSR | S_IWUSR);
+        int fd = shm_open(shm_key, O_RDWR, S_IREAD | S_IWRITE);
         if (fd <= -1) {
             fprintf(stderr, "Failed to open shared memory region: %s\n", strerror(errno));
             _exit(-1);
@@ -76,16 +70,17 @@ void __sanitizer_cov_trace_pc_guard_init(uint32_t *start, uint32_t *stop) {
 
     __sanitizer_cov_reset_edgeguards();
 
-    __shmem->num_edges = (uint32_t) (stop - start);
+    __shmem->num_edges = stop - start;
     printf("[COV] edge counters initialized. Shared memory: %s with %u edges\n", shm_key, __shmem->num_edges);
 }
-
-void __sanitizer_cov_trace_pc_guard(uint32_t *guard) {
+ void __sanitizer_cov_trace_pc_guard(uint32_t *guard) {
     // There's a small race condition here: if this function executes in two threads for the same
     // edge at the same time, the first thread might disable the edge (by setting the guard to zero)
     // before the second thread fetches the guard value (and thus the index). However, our
     // instrumentation ignores the first edge (see libcoverage.c) and so the race is unproblematic.
     uint32_t index = *guard;
+    // If this function is called before coverage instrumentation is properly initialized we want to return early.
+    if (!index) return;
     __shmem->edges[index / 8] |= 1 << (index % 8);
     *guard = 0;
 }
