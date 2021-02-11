@@ -14,6 +14,6 @@ RUN apt update -y && \
     cd mujs-fuzzilli && \
     cp /mujs-fuzzilli/Profile.swift /fuzzilli-0.9/Sources/FuzzilliCli/Profiles/Profile.swift && \
     make && \
-    cd /fuzzilli && \
+    cd /fuzzilli-0.9 && \
     swift build -Xcc "-lrt" -Xcxx "-lrt" -Xlinker "-lrt"
     # swift run -c release FuzzilliCli --profile=Profile.swift /mujs-fuzzilli/build/release/mujs -Xcc "-lrt" -Xcxx "-lrt" -Xlinker "-lrt"
