@@ -28,14 +28,12 @@ let muProfile = Profile(
                 main();
                 """,
 
-    ecmaVersion: ECMAScriptVersion.es5,
+    // only in later version: ecmaVersion: ECMAScriptVersion.es5,
 
     crashTests: ["crash();"],
-
-    // additionalCodeGenerators: WeightedList<CodeGenerator>([
+    additionalCodeGenerators: WeightedList<CodeGenerator>([]),
     //     (ForceV8TurbofanGenerator, 10),
     // ]),
-
     builtins: defaultBuiltins,
     // + ["gc", "BigInt", "BigUint64Array", "BigInt64Array", "SharedArrayBuffer", "Atomics"],
     propertyNames: defaultPropertyNames,

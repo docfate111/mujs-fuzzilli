@@ -12,10 +12,9 @@ RUN apt update -y && \
     cd / && \
     git clone https://github.com/docfate111/mujs-fuzzilli.git && \
     cd mujs-fuzzilli && \
-    cp /mujs-fuzzilli/muprofile.swift . && \
+    cp /mujs-fuzzilli/muprofile.swift /fuzzilli-0.9/Sources/FuzzilliCli/Profiles/muprofile.swift && \
     cp /mujs-fuzzilli/Profile.swift /fuzzilli-0.9/Sources/FuzzilliCli/Profiles/Profile.swift && \
     make && \
     cd /fuzzilli-0.9 
     # && \
-    #swift build -Xcc "-lrt" -Xcxx "-lrt" -Xlinker "-lrt"
-    # swift run -c release FuzzilliCli --profile=Profile.swift /mujs-fuzzilli/build/release/mujs -Xcc "-lrt" -Xcxx "-lrt" -Xlinker "-lrt"
+    # swift run -Xcc "-lrt" -Xcxx "-lrt" -Xlinker "-lrt" FuzzilliCli --profile=mujs /mujs-fuzzilli/build/release/mujs
