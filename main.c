@@ -11,7 +11,7 @@
 //
 // BEGIN FUZZING CODE
 //
-#ifdef linux
+#ifdef  __linux__
 #define S_IREAD __S_IREAD
 #define S_IWRITE __S_IWRITE
 #endif
@@ -375,81 +375,86 @@ main(int argc, char **argv)
 	int status = 0;
 	int strict = 0;
 	// int interactive = 0;
-	// int i, c;
+	int c;
 	// Let parent know we are ready
 	// write "HELO" on REPRL_CWFD
-    char helo[] = "HELO";
-	// read 4 bytes on REPRL_CRFD
-    if( (write(REPRL_CWFD, helo, 4) != 4) ||(read(REPRL_CRFD, helo, 4) != 4)) {
-		  fprintf(stderr, "Error writing or reading HELO\n");
-	      _exit(-1);
-    } else {
-		// break if 4 read bytes do not equal "HELO"
-		if (memcmp(helo, "HELO", 4) != 0) {
-		fprintf(stderr, "Invalid response from parent\n");
+	if(argc>=2){
+		char helo[] = "HELO";
+		// read 4 bytes on REPRL_CRFD
+		if( (write(REPRL_CWFD, helo, 4) != 4) ||(read(REPRL_CRFD, helo, 4) != 4)) {
+			fprintf(stderr, "Error writing or reading HELO\n");
 			_exit(-1);
-		}
-		// while true
-		while(1){
-			// read 4 bytes on REPRL_CRFD
-			unsigned action = 0;
-			ssize_t nread = read(REPRL_CRFD, &action, 4);
-			fflush(0);
-			// break if 4 read bytes do not equal "cexe"
-			if (nread != 4 || action != 0x63657865) { // 'exec'
-				fprintf(stderr, "Unknown action: %x\n", action);
+		} else {
+			// break if 4 read bytes do not equal "HELO"
+			if (memcmp(helo, "HELO", 4) != 0) {
+			fprintf(stderr, "Invalid response from parent\n");
 				_exit(-1);
 			}
-			// read 8 bytes on REPRL_CRFD, store as unsigned 64 bit integer size
-			size_t script_size = 0;
-			read(REPRL_CRFD, &script_size, 8);
-			ssize_t remaining = (ssize_t) script_size;
-			// allocate size+1 bytes
-			char* buffer = (char*)malloc(script_size+1);
-			// read size bytes from REPRL_DRFD into allocated buffer,
-			ssize_t rv = read(REPRL_DRFD, buffer, (size_t) remaining);
-			if (rv <= 0) {
-            	fprintf(stderr, "Failed to load script\n");
-            	_exit(-1);
-	        }
-			buffer[script_size] = 0;
-			// Execute buffer as javascript code
-			J = js_newstate(NULL, NULL, strict ? JS_STRICT : 0);
-			js_newcfunction(J, jsB_gc, "gc", 0);
-			js_setglobal(J, "gc");
-			js_newcfunction(J, jsB_load, "load", 1);
-			js_setglobal(J, "load");
-			js_newcfunction(J, jsB_compile, "compile", 2);
-			js_setglobal(J, "compile");
-			js_newcfunction(J, jsB_print, "print", 0);
-			js_setglobal(J, "print");
-			js_newcfunction(J, jsB_write, "write", 0);
-			js_setglobal(J, "write");
-			js_newcfunction(J, jsB_read, "read", 1);
-			js_setglobal(J, "read");
-			js_newcfunction(J, jsB_readline, "readline", 0);
-			js_setglobal(J, "readline");
-			js_newcfunction(J, jsB_repr, "repr", 0);
-			js_setglobal(J, "repr");
-			js_newcfunction(J, jsB_quit, "quit", 1);
-			js_setglobal(J, "quit");
-			js_dostring(J, require_js);
-			js_dostring(J, stacktrace_js);
-			// Store return value from JS execution
-			int ret_value = js_dostring(J, buffer);
-			if(ret_value != 0) {  fprintf(stderr, "Failed to eval_buf reprl\n"); }
-			// Flush stdout and stderr. As REPRL sets them to regular files, libc uses full bufferring for them, which means they need to be flushed after every execution
-			fflush(stdout);
-        	fflush(stderr);
-			// Mask return value with 0xff and shift it left by 8, then write that value over REPRL_CWFD
-			// Send return code to parent and reset edge counters.
-			status = (ret_value & 0xff) << 8;
-			if(write(REPRL_CWFD, &status, 4) != 4){ fprintf(stderr, "Erroring writing return value over REPRL_CWFD\n"); }
-			__sanitizer_cov_reset_edgeguards();
-			// Reset the Javascript engine
-			// Call __sanitizer_cov_reset_edgeguards to reset coverage
-			// TODO: later fuzz strict mode as well
+			// while true
+			while(1){
+				// read 4 bytes on REPRL_CRFD
+				unsigned action = 0;
+				ssize_t nread = read(REPRL_CRFD, &action, 4);
+				fflush(0);
+				// break if 4 read bytes do not equal "cexe"
+				if (nread != 4 || action != 0x63657865) { // 'exec'
+					fprintf(stderr, "Unknown action: %x\n", action);
+					_exit(-1);
+				}
+				// read 8 bytes on REPRL_CRFD, store as unsigned 64 bit integer size
+				size_t script_size = 0;
+				read(REPRL_CRFD, &script_size, 8);
+				ssize_t remaining = (ssize_t) script_size;
+				// allocate size+1 bytes
+				char* buffer = (char*)malloc(script_size+1);
+				// read size bytes from REPRL_DRFD into allocated buffer,
+				ssize_t rv = read(REPRL_DRFD, buffer, (size_t) remaining);
+				if (rv <= 0) {
+					fprintf(stderr, "Failed to load script\n");
+					_exit(-1);
+				}
+				buffer[script_size] = 0;
+				// Execute buffer as javascript code
+				J = js_newstate(NULL, NULL, strict ? JS_STRICT : 0);
+				js_newcfunction(J, jsB_gc, "gc", 0);
+				js_setglobal(J, "gc");
+				js_newcfunction(J, jsB_load, "load", 1);
+				js_setglobal(J, "load");
+				js_newcfunction(J, jsB_compile, "compile", 2);
+				js_setglobal(J, "compile");
+				js_newcfunction(J, jsB_print, "print", 0);
+				js_setglobal(J, "print");
+				js_newcfunction(J, jsB_write, "write", 0);
+				js_setglobal(J, "write");
+				js_newcfunction(J, jsB_read, "read", 1);
+				js_setglobal(J, "read");
+				js_newcfunction(J, jsB_readline, "readline", 0);
+				js_setglobal(J, "readline");
+				js_newcfunction(J, jsB_repr, "repr", 0);
+				js_setglobal(J, "repr");
+				js_newcfunction(J, jsB_quit, "quit", 1);
+				js_setglobal(J, "quit");
+				js_dostring(J, require_js);
+				js_dostring(J, stacktrace_js);
+				// Store return value from JS execution
+				int ret_value = js_dostring(J, buffer);
+				if(ret_value != 0) {  fprintf(stderr, "Failed to eval_buf reprl\n"); }
+				// Flush stdout and stderr. As REPRL sets them to regular files, libc uses full bufferring for them, which means they need to be flushed after every execution
+				fflush(stdout);
+				fflush(stderr);
+				// Mask return value with 0xff and shift it left by 8, then write that value over REPRL_CWFD
+				// Send return code to parent and reset edge counters.
+				status = (ret_value & 0xff) << 8;
+				if(write(REPRL_CWFD, &status, 4) != 4){ fprintf(stderr, "Erroring writing return value over REPRL_CWFD\n"); }
+				__sanitizer_cov_reset_edgeguards();
+				// Reset the Javascript engine
+				// Call __sanitizer_cov_reset_edgeguards to reset coverage
+				// TODO: later fuzz strict mode as well
+			}
 		}
 	}
+		printf(
+			"Use -f for fuzzilli"
+		);
 		return 0;
 }

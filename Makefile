@@ -37,7 +37,7 @@ endif
 
 ifeq "$(HAVE_READLINE)" "yes"
   CFLAGS += -DHAVE_READLINE
-  LIBREADLINE += -lreadline
+  LIBREADLINE += -lreadline -lrt
 endif
 
 CFLAGS += $(XCFLAGS)
