@@ -10,6 +10,8 @@
 #include <fcntl.h>
 #include <sys/wait.h>
 #include <sys/mman.h>
+#include <sys/stat.h>
+// (Must include the 4 defined File Descriptor numbers REPRL_CRFD, REPRL_CWFD, REPRL_DRFD, REPRL_DWFD)
 #define REPRL_CRFD 100
 #define REPRL_CWFD 101
 #define REPRL_DRFD 102
@@ -17,7 +19,13 @@
 #define REPRL_MAX_DATA_SIZE (16*1024*1024)
 #define SHM_SIZE 0x100000
 #define MAX_EDGES ((SHM_SIZE - 4) * 8)
-#define CHECK(cond) if (!(cond)) { fprintf(stderr, "\"" #cond "\" failed\n"); exit(EXIT_FAILURE); }
+#ifndef DCHECK
+#define DCHECK(condition) { assert(condition); abort(); }
+#endif
+
+#ifndef CHECK
+#define CHECK DCHECK
+#endif
 // Shared memory buffer with the parent.
 char* reprl_input_data;
 struct shmem_data {
@@ -366,163 +374,86 @@ static void usage(void)
 int
 main(int argc, char **argv)
 {
-	char *input;
+	// char *input;
 	js_State *J;
 	int status = 0;
 	int strict = 0;
-	int interactive = 0;
-	int reprl_fuzzilli_mode = 0;
-	int i, c;
-
-	while ((c = xgetopt(argc, argv, "is")) != -1) {
-		switch (c) {
-		default: usage(); break;
-		case 'i': interactive = 1; break;
-		case 's': strict = 1; break;
-		case 'f': reprl_fuzzilli_mode = 1; break;
-		}
-	}
+	// int interactive = 0;
+	// int i, c;
 	// Let parent know we are ready
-  if (reprl_fuzzilli_mode)  {
+	// write "HELO" on REPRL_CWFD
     char helo[] = "HELO";
-    if (write(REPRL_CWFD, helo, 4) != 4 ||
-      read(REPRL_CRFD, helo, 4) != 4) {
-      reprl_fuzzilli_mode = 0;
-    }
-	if (memcmp(helo, "HELO", 4) != 0) {
-	   fprintf(stderr, "Invalid response from parent\n");
+	// read 4 bytes on REPRL_CRFD
+    if( (write(REPRL_CWFD, helo, 4) != 4) ||(read(REPRL_CRFD, helo, 4) != 4)) {
+		  fprintf(stderr, "Error writing or reading HELO\n");
 	      _exit(-1);
-    }
-  }
-  do {
-		// later fuzz strict mode as well
-		J = js_newstate(NULL, NULL, strict ? JS_STRICT : 0);
-
-		js_newcfunction(J, jsB_gc, "gc", 0);
-		js_setglobal(J, "gc");
-
-		js_newcfunction(J, jsB_load, "load", 1);
-		js_setglobal(J, "load");
-
-		js_newcfunction(J, jsB_compile, "compile", 2);
-		js_setglobal(J, "compile");
-
-		js_newcfunction(J, jsB_print, "print", 0);
-		js_setglobal(J, "print");
-
-		js_newcfunction(J, jsB_write, "write", 0);
-		js_setglobal(J, "write");
-
-		js_newcfunction(J, jsB_read, "read", 1);
-		js_setglobal(J, "read");
-
-		js_newcfunction(J, jsB_readline, "readline", 0);
-		js_setglobal(J, "readline");
-
-		js_newcfunction(J, jsB_repr, "repr", 0);
-		js_setglobal(J, "repr");
-
-		js_newcfunction(J, jsB_quit, "quit", 1);
-		js_setglobal(J, "quit");
-
-		js_dostring(J, require_js);
-		js_dostring(J, stacktrace_js);
-
-		if (xoptind == argc) {
-			interactive = 1;
-		} else {
-			c = xoptind++;
-
-			js_newarray(J);
-			i = 0;
-			while (xoptind < argc) {
-				js_pushstring(J, argv[xoptind++]);
-				js_setindex(J, -2, i++);
-			}
-			js_setglobal(J, "scriptArgs");
-			// write buffer to file?
-			if (js_dofile(J, argv[c]))
-				status = 1;
+    } else {
+		// break if 4 read bytes do not equal "HELO"
+		if (memcmp(helo, "HELO", 4) != 0) {
+		fprintf(stderr, "Invalid response from parent\n");
+			_exit(-1);
 		}
-
-		if (interactive) {
-			if (isatty(0)) {
-				using_history();
-				rl_bind_key('\t', rl_insert);
-				input = readline(PS1);
-				while (input) {
-					eval_print(J, input);
-					if (*input)
-						add_history(input);
-					free(input);
-					input = readline(PS1);
-				}
-				putchar('\n');
-			} else {
-				input = read_stdin();
-				if (!input || !js_dostring(J, input))
-					status = 1;
-				free(input);
+		// while true
+		while(1){
+			// read 4 bytes on REPRL_CRFD
+			unsigned action = 0;
+			ssize_t nread = read(REPRL_CRFD, &action, 4);
+			fflush(0);
+			// break if 4 read bytes do not equal "cexe"
+			if (nread != 4 || action != 0x63657865) { // 'exec'
+				fprintf(stderr, "Unknown action: %x\n", action);
+				_exit(-1);
 			}
+			// read 8 bytes on REPRL_CRFD, store as unsigned 64 bit integer size
+			size_t script_size = 0;
+			read(REPRL_CRFD, &script_size, 8);
+			ssize_t remaining = (ssize_t) script_size;
+			// allocate size+1 bytes
+			char* buffer = (char*)malloc(script_size+1);
+			// read size bytes from REPRL_DRFD into allocated buffer,
+			ssize_t rv = read(REPRL_DRFD, buffer, (size_t) remaining);
+			if (rv <= 0) {
+            	fprintf(stderr, "Failed to load script\n");
+            	_exit(-1);
+	        }
+			buffer[script_size] = 0;
+			// Execute buffer as javascript code
+			J = js_newstate(NULL, NULL, strict ? JS_STRICT : 0);
+			js_newcfunction(J, jsB_gc, "gc", 0);
+			js_setglobal(J, "gc");
+			js_newcfunction(J, jsB_load, "load", 1);
+			js_setglobal(J, "load");
+			js_newcfunction(J, jsB_compile, "compile", 2);
+			js_setglobal(J, "compile");
+			js_newcfunction(J, jsB_print, "print", 0);
+			js_setglobal(J, "print");
+			js_newcfunction(J, jsB_write, "write", 0);
+			js_setglobal(J, "write");
+			js_newcfunction(J, jsB_read, "read", 1);
+			js_setglobal(J, "read");
+			js_newcfunction(J, jsB_readline, "readline", 0);
+			js_setglobal(J, "readline");
+			js_newcfunction(J, jsB_repr, "repr", 0);
+			js_setglobal(J, "repr");
+			js_newcfunction(J, jsB_quit, "quit", 1);
+			js_setglobal(J, "quit");
+			js_dostring(J, require_js);
+			js_dostring(J, stacktrace_js);
+			// Store return value from JS execution
+			int ret_value = js_dostring(J, buffer);
+			if(ret_value != 0) {  fprintf(stderr, "Failed to eval_buf reprl\n"); }
+			// Flush stdout and stderr. As REPRL sets them to regular files, libc uses full bufferring for them, which means they need to be flushed after every execution
+			fflush(stdout);
+        	fflush(stderr);
+			// Mask return value with 0xff and shift it left by 8, then write that value over REPRL_CWFD
+			// Send return code to parent and reset edge counters.
+			status = (ret_value & 0xff) << 8;
+			if(write(REPRL_CWFD, &status, 4) != 4){ fprintf(stderr, "Erroring writing return value over REPRL_CWFD\n"); }
+			__sanitizer_cov_reset_edgeguards();
+			// Reset the Javascript engine
+			// Call __sanitizer_cov_reset_edgeguards to reset coverage
+			// TODO: later fuzz strict mode as well
 		}
-		js_gc(J, 0);
-		js_freestate(J);
-	      if (reprl_fuzzilli_mode) {
-	        unsigned action = 0;
-	        ssize_t nread = read(REPRL_CRFD, &action, 4);
-	        fflush(0);
-	        if (nread != 4 || action != 0x63657865) { // 'exec'
-	          fprintf(stderr, "Unknown action: %x\n", action);
-	          _exit(-1);
-	     }
-      }
-  	 }	 while (!reprl_fuzzilli_mode);
-	   int is_done = 0;
-	   int len;
-	   if (reprl_fuzzilli_mode)
-      {
-		// read 8 bytes on REPRL_CRFD, store as unsigned 64 bit integer size
-        size_t script_size = 0;
-        read(REPRL_CRFD, &script_size, 8);
-		// allocate size+1 bytes
-        char* buffer = (char*)malloc(script_size+1);
-		ssize_t remaining = (ssize_t) script_size;
-        while (remaining > 0)
-        {
-		// read size bytes from REPRL_DRFD into allocated buffer, either via memory mapped IO or the read syscall (make sure to account for short reads in the latter case)
-          ssize_t rv = read(REPRL_DRFD, buffer, (size_t) remaining);
-          if (rv <= 0) {
-            fprintf(stderr, "Failed to load script\n");
-            _exit(-1);
-          }
-          remaining -= rv;
-          buffer += rv;
-        }
-        buffer[script_size] = 0;
-        // we have to do this to reset the state
-        is_done = 1;
-      }
-	if(!reprl_fuzzilli_mode){
-		return status;
 	}
-	while (!reprl_fuzzilli_mode);
+		return 0;
 }
-// (Must include the 4 defined File Descriptor numbers REPRL_CRFD, REPRL_CWFD, REPRL_DRFD, REPRL_DWFD)
-
-// if REPRL_MODE on commandline:
-//     write "HELO" on REPRL_CWFD
-//     read 4 bytes on REPRL_CRFD
-//     break if 4 read bytes do not equal "HELO"
-//     optionally, mmap the REPRL_DRFD with size REPRL_MAX_DATA_SIZE
-//     while true:
-//         read 4 bytes on REPRL_CRFD
-//         break if 4 read bytes do not equal "cexe"
-//         read 8 bytes on REPRL_CRFD, store as unsigned 64 bit integer size
-//         allocate size+1 bytes
-//         read size bytes from REPRL_DRFD into allocated buffer, either via memory mapped IO or the read syscall (make sure to account for short reads in the latter case)
-//         Execute buffer as javascript code
-//         Store return value from JS execution
-//         Flush stdout and stderr. As REPRL sets them to regular files, libc uses full bufferring for them, which means they need to be flushed after every execution
-//         Mask return value with 0xff and shift it left by 8, then write that value over REPRL_CWFD
-//         Reset the Javascript engine
-//         Call __sanitizer_cov_reset_edgeguards to reset coverage
