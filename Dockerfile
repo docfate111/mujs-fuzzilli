@@ -9,7 +9,11 @@ RUN apt update -y && \
     /bin/bash -c "source  ~/.bashrc" && \
     wget https://github.com/googleprojectzero/fuzzilli/archive/v0.9.1.tar.gz && \
     tar xzf v0.9.1.tar.gz && \
-    cd /fuzzilli && \
-    swift build
+    cd / && \
+    git clone https://github.com/docfate111/mujs-fuzzilli.git && \
+    cd mujs-fuzzilli && \
+    make
+    #cd /fuzzilli && \
+    #swift build
     # swift run FuzzilliCli build/release/mujs
 
