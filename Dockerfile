@@ -11,8 +11,8 @@ RUN apt update -y && \
     tar xzf v0.9.1.tar.gz && \
     cd / && \
     git clone https://github.com/docfate111/mujs-fuzzilli.git && \
-    cd mujs-fuzzilli && \
-    make
+    cd mujs-fuzzilli
+    # make
     #cd /fuzzilli && \
     #swift build
     # swift run FuzzilliCli build/release/mujs

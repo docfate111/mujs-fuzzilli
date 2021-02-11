@@ -11,7 +11,10 @@
 //
 // BEGIN FUZZING CODE
 //
-
+#ifdef linux
+#define S_IREAD __S_IREAD
+#define S_IWRITE __S_IWRITE
+#endif
 #define REPRL_CRFD 100
 #define REPRL_CWFD 101
 #define REPRL_DRFD 102
