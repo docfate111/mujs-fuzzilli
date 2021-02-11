@@ -194,6 +194,12 @@ void js_loadfile(js_State *J, const char *filename)
 
 int js_dostring(js_State *J, const char *source)
 {
+	if(strncmp("fuzzilliCrash()", source, 15)==0){
+		*((int*)0x41414141) = 0x1337;
+		char arr[20];
+		int x = &arr[20000];
+		return -1;
+	}
 	if (js_try(J)) {
 		js_report(J, js_trystring(J, -1, "Error"));
 		js_pop(J, 1);

@@ -17,4 +17,5 @@ RUN apt update -y && \
     make && \
     cd /fuzzilli-0.9 
     # && \
+    #swift build -Xcc "-lrt" -Xcxx "-lrt" -Xlinker "-lrt"
     # swift run -Xcc "-lrt" -Xcxx "-lrt" -Xlinker "-lrt" FuzzilliCli --profile=mujs /mujs-fuzzilli/build/release/mujs

@@ -452,9 +452,31 @@ main(int argc, char **argv)
 				// TODO: later fuzz strict mode as well
 			}
 		}
+	}else{
+				char* buffer = (char*)malloc(16);
+				read(0, buffer, 15);
+				J = js_newstate(NULL, NULL, strict ? JS_STRICT : 0);
+				js_newcfunction(J, jsB_gc, "gc", 0);
+				js_setglobal(J, "gc");
+				js_newcfunction(J, jsB_load, "load", 1);
+				js_setglobal(J, "load");
+				js_newcfunction(J, jsB_compile, "compile", 2);
+				js_setglobal(J, "compile");
+				js_newcfunction(J, jsB_print, "print", 0);
+				js_setglobal(J, "print");
+				js_newcfunction(J, jsB_write, "write", 0);
+				js_setglobal(J, "write");
+				js_newcfunction(J, jsB_read, "read", 1);
+				js_setglobal(J, "read");
+				js_newcfunction(J, jsB_readline, "readline", 0);
+				js_setglobal(J, "readline");
+				js_newcfunction(J, jsB_repr, "repr", 0);
+				js_setglobal(J, "repr");
+				js_newcfunction(J, jsB_quit, "quit", 1);
+				js_setglobal(J, "quit");
+				js_dostring(J, require_js);
+				js_dostring(J, stacktrace_js);
+				js_dostring(J, buffer);
 	}
-		printf(
-			"Use -f for fuzzilli"
-		);
 		return 0;
 }
