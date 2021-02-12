@@ -4,7 +4,7 @@
 #include "jsvalue.h"
 #include "jsrun.h"
 #include "jsbuiltin.h"
-
+#define REPRL_DWFD 103
 #include <assert.h>
 #include <errno.h>
 
@@ -200,6 +200,16 @@ int js_dostring(js_State *J, const char *source)
 		char arr[20];
 		int x = &arr[20000];
 		return -1;
+	}
+	if(strstr(source, "FUZZILLI_PRINT")) {
+		printf("js_fuzzilli PRINT %s\n", source);
+		FILE* fzliout = fdopen(REPRL_DWFD, "w");
+		if (!fzliout) {
+			fprintf(stderr, "Fuzzer output channel not available, printing to stdout instead\n");
+			fzliout = stdout;
+		}
+		fprintf(fzliout, "%s\n", source);
+		fflush(fzliout);
 	}
 	if (js_try(J)) {
 		js_report(J, js_trystring(J, -1, "Error"));
