@@ -30,7 +30,7 @@ let muProfile = Profile(
 
     // only in later version: ecmaVersion: ECMAScriptVersion.es5,
 
-    crashTests: ["fuzzilliCrash()"],
+    crashTests: ["fuzzilli('FUZZILLI_CRASH')"],
     additionalCodeGenerators: WeightedList<CodeGenerator>([]),
     builtins: defaultBuiltins,
     // + ["gc", "BigInt", "BigUint64Array", "BigInt64Array", "SharedArrayBuffer", "Atomics"],
