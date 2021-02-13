@@ -357,6 +357,43 @@ static char *read_stdin(void)
 	s[n] = 0;
 	return s;
 }
+void fuzzilli(js_State *J) {
+  // pop arg of the stack
+  const char* str = js_tostring(J, 1);
+  puts(str);
+  if (!str) {
+    printf("js_fuzzilli NO CMD\n");
+    return;
+  }
+  if (!strcmp(str, "FUZZILLI_CRASH")) {
+		printf("js_fuzzilli CRASH\n");
+//     // switch (type) {
+//     //   case 0:
+         *((int*)0x41414141) = 0x1337;
+//     //     break;
+//     //   case 1:
+//     //     assert(0);
+//     //     break;
+//     //   default:
+//     //     assert(0);
+//     //     break;
+	} else if (!strcmp(str, "FUZZILLI_PRINT")) {
+			printf("js_fuzzilli PRINT %s\n", str);
+			FILE* fzliout = fdopen(REPRL_DWFD, "w");
+			if (!fzliout) {
+			fprintf(stderr, "Fuzzer output channel not available, printing to stdout instead\n");
+			fzliout = stdout;
+			}
+	//     // const char* print_str = JS_ToCString(ctx, argv[1]);
+	//     if (print_str) {
+	//       fprintf(fzliout, "%s\n", print_str);
+	//       // JS_FreeCString(ctx, print_str);
+	//     }
+		fflush(fzliout);
+	}
+  // JS_FreeCString(ctx, str);
+  return;
+}
 
 static void usage(void)
 {
@@ -367,21 +404,19 @@ static void usage(void)
 	exit(1);
 }
 
-int
-main(int argc, char **argv)
-{
+int main(int argc, char **argv){
 	// char *input;
 	js_State *J;
 	int status = 0;
 	int strict = 0;
 	// int interactive = 0;
-	int c;
+	// int c;
 	// Let parent know we are ready
 	// write "HELO" on REPRL_CWFD
 	if(argc>=2){
 		char helo[] = "HELO";
 		// read 4 bytes on REPRL_CRFD
-		if( (write(REPRL_CWFD, helo, 4) != 4) ||(read(REPRL_CRFD, helo, 4) != 4)) {
+		if( (write(REPRL_CWFD, helo, 4) != 4) || (read(REPRL_CRFD, helo, 4) != 4)) {
 			fprintf(stderr, "Error writing or reading HELO\n");
 			_exit(-1);
 		} else {
@@ -434,6 +469,8 @@ main(int argc, char **argv)
 				js_setglobal(J, "repr");
 				js_newcfunction(J, jsB_quit, "quit", 1);
 				js_setglobal(J, "quit");
+				js_newcfunction(J, fuzzilli, "fuzzilli", 1);
+				js_setglobal(J, "fuzzilli");
 				js_dostring(J, require_js);
 				js_dostring(J, stacktrace_js);
 				// Store return value from JS execution
@@ -453,8 +490,8 @@ main(int argc, char **argv)
 			}
 		}
 	}else{
-				char* buffer = (char*)malloc(16);
-				read(0, buffer, 15);
+				char* buffer = (char*)malloc(150);
+				read(0, buffer, 149);
 				J = js_newstate(NULL, NULL, strict ? JS_STRICT : 0);
 				js_newcfunction(J, jsB_gc, "gc", 0);
 				js_setglobal(J, "gc");
@@ -474,6 +511,8 @@ main(int argc, char **argv)
 				js_setglobal(J, "repr");
 				js_newcfunction(J, jsB_quit, "quit", 1);
 				js_setglobal(J, "quit");
+				js_newcfunction(J, fuzzilli, "fuzzilli", 1);
+				js_setglobal(J, "fuzzilli");
 				js_dostring(J, require_js);
 				js_dostring(J, stacktrace_js);
 				js_dostring(J, buffer);

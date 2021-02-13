@@ -194,23 +194,6 @@ void js_loadfile(js_State *J, const char *filename)
 
 int js_dostring(js_State *J, const char *source)
 {
-	// if the crash function is found crash
-	if(strstr(source, "fuzzilliCrash()")){
-		*((int*)0x41414141) = 0x1337;
-		char arr[20];
-		int x = &arr[20000];
-		return -1;
-	}
-	if(strstr(source, "FUZZILLI_PRINT")) {
-		printf("js_fuzzilli PRINT %s\n", source);
-		FILE* fzliout = fdopen(REPRL_DWFD, "w");
-		if (!fzliout) {
-			fprintf(stderr, "Fuzzer output channel not available, printing to stdout instead\n");
-			fzliout = stdout;
-		}
-		fprintf(fzliout, "%s\n", source);
-		fflush(fzliout);
-	}
 	if (js_try(J)) {
 		js_report(J, js_trystring(J, -1, "Error"));
 		js_pop(J, 1);
