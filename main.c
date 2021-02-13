@@ -366,16 +366,18 @@ void fuzzilli(js_State *J) {
   }
   if (!strcmp(str, "FUZZILLI_CRASH")) {
 		printf("js_fuzzilli CRASH\n");
-//     // switch (type) {
-//     //   case 0:
-         *((int*)0x41414141) = 0x1337;
-//     //     break;
-//     //   case 1:
-//     //     assert(0);
-//     //     break;
-//     //   default:
-//     //     assert(0);
-//     //     break;
+		int arg = js_tointeger(J, 2);
+		switch (arg) {
+            case 0:
+                *((int*)0x41414141) = 0x1337;
+                break;
+            case 1:
+                 assert(0);
+                break;
+            case 2:
+                 assert(0);
+                break;
+        }
 	} else if (!strcmp(str, "FUZZILLI_PRINT")) {
 			// get next argument off the stack to print
 			const char* print_str = js_tostring(J, 2);
