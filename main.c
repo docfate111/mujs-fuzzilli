@@ -377,6 +377,7 @@ void fuzzilli(js_State *J) {
 //     //     assert(0);
 //     //     break;
 	} else if (!strcmp(str, "FUZZILLI_PRINT")) {
+			// get next argument off the stack to print
 			const char* print_str = js_tostring(J, 2);
 			printf("js_fuzzilli PRINT %s\n", print_str);
 			FILE* fzliout = fdopen(REPRL_DWFD, "w");
