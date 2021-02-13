@@ -360,7 +360,6 @@ static char *read_stdin(void)
 void fuzzilli(js_State *J) {
   // pop arg of the stack
   const char* str = js_tostring(J, 1);
-  puts(str);
   if (!str) {
     printf("js_fuzzilli NO CMD\n");
     return;
@@ -378,20 +377,18 @@ void fuzzilli(js_State *J) {
 //     //     assert(0);
 //     //     break;
 	} else if (!strcmp(str, "FUZZILLI_PRINT")) {
-			printf("js_fuzzilli PRINT %s\n", str);
+			const char* print_str = js_tostring(J, 2);
+			printf("js_fuzzilli PRINT %s\n", print_str);
 			FILE* fzliout = fdopen(REPRL_DWFD, "w");
 			if (!fzliout) {
-			fprintf(stderr, "Fuzzer output channel not available, printing to stdout instead\n");
-			fzliout = stdout;
+				fprintf(stderr, "Fuzzer output channel not available, printing to stdout instead\n");
+				fzliout = stdout;
 			}
-	//     // const char* print_str = JS_ToCString(ctx, argv[1]);
-	//     if (print_str) {
-	//       fprintf(fzliout, "%s\n", print_str);
-	//       // JS_FreeCString(ctx, print_str);
-	//     }
-		fflush(fzliout);
+			if (print_str) {
+				fprintf(fzliout, "%s\n", print_str);
+			}
+			fflush(fzliout);
 	}
-  // JS_FreeCString(ctx, str);
   return;
 }
 
@@ -469,7 +466,7 @@ int main(int argc, char **argv){
 				js_setglobal(J, "repr");
 				js_newcfunction(J, jsB_quit, "quit", 1);
 				js_setglobal(J, "quit");
-				js_newcfunction(J, fuzzilli, "fuzzilli", 1);
+				js_newcfunction(J, fuzzilli, "fuzzilli", 2);
 				js_setglobal(J, "fuzzilli");
 				js_dostring(J, require_js);
 				js_dostring(J, stacktrace_js);
